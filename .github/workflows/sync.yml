@@ -1,0 +1,60 @@
+name: Full Auto Sync Rules (Clean Mode)
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *' # 每 15 分钟运行一次
+  workflow_dispatch:      # 支持手动触发
+
+jobs:
+  sync-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Your Repo
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: true
+
+      - name: Sync from Upstream
+        run: |
+          # 1. 设置 Git 信息
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # 2. 创建临时目录抓取对方内容
+          mkdir -p temp_upstream
+          git clone --depth 1 https://github.com/TG-Twilight/AWAvenue-Ads-Rule.git temp_upstream
+          
+          # 3. 重新创建 AWAvenue 目录并提取文件
+          # 先清理旧的 AWAvenue 目录确保干净
+          rm -rf AWAvenue
+          mkdir -p AWAvenue
+          
+          # 复制根目录 .txt 文件
+          cp temp_upstream/*.txt AWAvenue/ || true
+          
+          # 复制 Filters 目录下的所有文件到 AWAvenue
+          if [ -d "temp_upstream/Filters" ]; then
+            cp -r temp_upstream/Filters/* AWAvenue/ || true
+          fi
+          
+          # 清理临时克隆的内容
+          rm -rf temp_upstream
+
+      - name: Force Push to Clean History
+        run: |
+          # 关键步骤：重置 Git 历史
+          # 1. 初始化一个新的临时 Git 状态
+          rm -rf .git
+          git init
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # 2. 添加所有文件并创建唯一的提交记录
+          git add .
+          git commit -m "Auto Sync: $(date +"%Y-%m-%d %H:%M") [Clean History]"
+          
+          # 3. 强制推送覆盖远程 main 分支（如果你是 master 分支请将 main 改为 master）
+          # 注意：这里需要使用仓库的认证 Token
+          git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          git push -f origin master:main
